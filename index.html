@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NESCAFÉ • Page Update Request</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --red:#e2001a; --ink:#1a1a1a; --muted:#6b7280; --line:#e5e7eb; --bg:#f3f4f6;
+    --green:#16a34a; --green-d:#15803d; --amber:#f59e0b; --blue:#2563eb;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font:14px/1.45 "Segoe UI",Arial,sans-serif;color:var(--ink);background:var(--bg)}
+  button,input,select,textarea{font:inherit;color:inherit}
+  .muted{color:var(--muted)} .small{font-size:12px} .grow{flex:1}
+
+  /* ---------- Top bar ---------- */
+  #bar{position:sticky;top:0;z-index:50;height:58px;display:flex;align-items:center;gap:8px;padding:0 12px;
+       background:var(--ink);color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  #brand{font-weight:700;white-space:nowrap;margin-right:6px}
+  #brand span{color:var(--red)}
+  #url{flex:1;min-width:200px;height:36px;border:0;border-radius:6px;padding:0 12px;color:var(--ink)}
+  #bar select{height:36px;border-radius:6px;border:0;padding:0 8px;color:var(--ink)}
+  .btn{height:36px;padding:0 14px;border-radius:6px;border:1px solid transparent;cursor:pointer;background:#fff;color:var(--ink);white-space:nowrap}
+  .btn:hover{filter:brightness(.95)}
+  .btn.primary{background:var(--green);color:#fff;font-weight:600}
+  .btn.primary:hover{background:var(--green-d)}
+  .btn.dark{background:#333;color:#fff;border-color:#444}
+  .btn.ghost{background:transparent;border-color:var(--line)}
+  .btn.danger{color:#b91c1c}
+  .btn.sm{height:28px;padding:0 10px;font-size:12px}
+  .toggle{display:flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;user-select:none}
+  .toggle input{display:none}
+  .toggle .sw{width:38px;height:22px;border-radius:11px;background:#555;position:relative;transition:.2s}
+  .toggle .sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
+  .toggle input:checked + .sw{background:var(--green)}
+  .toggle input:checked + .sw::after{left:19px}
+  #cnt{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--green);color:#fff;font-size:12px;text-align:center;margin-left:4px}
+
+  /* ---------- Layout ---------- */
+  #main{display:flex;height:calc(100vh - 58px)}
+  #stage{flex:1;overflow:auto;display:flex;justify-content:center;position:relative}
+  #frameWrap{width:100%;height:100%;background:#fff;transition:width .2s;box-shadow:0 0 0 1px var(--line)}
+  #frameWrap.hidden{display:none}
+  #page{width:100%;height:100%;border:0;display:block}
+  #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px}
+  #empty .box{max-width:620px;background:#fff;border-radius:12px;padding:28px;box-shadow:0 4px 18px rgba(0,0,0,.08)}
+  #empty h2{margin-top:0}
+  #empty ol{padding-left:20px} #empty li{margin:4px 0}
+  #empty .err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:10px 12px;border-radius:8px;margin-top:12px;white-space:pre-wrap}
+  .spinner{width:34px;height:34px;border:4px solid #ddd;border-top-color:var(--green);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ---------- Side panel ---------- */
+  #side{width:350px;flex:none;background:#fff;border-left:1px solid var(--line);overflow:auto;padding:14px}
+  #side.hidden{display:none}
+  #side h3{margin:4px 0 10px;font-size:15px}
+  .field{margin-bottom:10px}
+  .field label{display:block;font-size:12px;font-weight:600;margin-bottom:3px}
+  .field input,.field select,.field textarea{width:100%;border:1px solid #d1d5db;border-radius:6px;padding:7px 9px;background:#fff}
+  .field textarea{resize:vertical}
+  .req{color:var(--red)}
+  .row{display:flex;gap:8px} .row .field{flex:1}
+  hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+  .card{border:1px solid var(--line);border-left:4px solid var(--green);border-radius:8px;padding:8px 10px;margin-bottom:8px}
+  .card-h{display:flex;align-items:center;gap:8px}
+  .num{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:11px;background:var(--green);color:#fff;font-weight:700;font-size:12px}
+  .tags{margin:4px 0}
+  .tag{display:inline-block;font-size:11px;background:#dcfce7;color:#166534;border-radius:4px;padding:1px 6px;margin-right:4px}
+  .card-a{display:flex;gap:6px}
+  .card-a button{border:0;background:none;color:var(--blue);cursor:pointer;padding:0;font-size:12px}
+  .card-a button[data-a=del]{color:#b91c1c}
+
+  /* ---------- Dialogs ---------- */
+  dialog{border:0;border-radius:12px;padding:0;box-shadow:0 20px 50px rgba(0,0,0,.35);max-width:96vw}
+  dialog::backdrop{background:rgba(0,0,0,.45)}
+  .dlg-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .dlg-head h3{margin:0;font-size:16px}
+  .dlg-body{padding:14px 16px;max-height:68vh;overflow:auto}
+  .dlg-foot{display:flex;gap:8px;align-items:center;padding:12px 16px;border-top:1px solid var(--line)}
+  #dlgEdit{width:560px}
+  .preview{background:var(--bg);border-radius:8px;padding:10px;margin-bottom:12px;max-height:140px;overflow:auto;font-size:13px;white-space:pre-wrap}
+  .preview img{max-height:110px;max-width:100%;display:block}
+  .opt{display:flex;align-items:center;gap:8px;font-weight:600;margin:10px 0 6px;cursor:pointer}
+  .opt-body{margin-left:24px;display:none}
+  .opt-body.on{display:block}
+  .opt-body textarea,.opt-body input[type=url],.opt-body input[type=text]{width:100%;border:1px solid #d1d5db;border-radius:6px;padding:7px 9px}
+  .seg{display:flex;gap:14px;margin-bottom:8px;flex-wrap:wrap}
+  .seg label{display:flex;gap:4px;align-items:center;cursor:pointer}
+  #edImgPreview{display:none;max-height:120px;max-width:100%;margin-top:8px;border-radius:6px;border:1px solid var(--line)}
+  #dlgRequest{width:1000px}
+  .req-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .shot{border:1px solid var(--line);border-radius:8px;max-height:58vh;overflow:auto;background:var(--bg)}
+  .shot img{width:100%;display:block}
+  #reqText{width:100%;height:58vh;font:12px/1.5 Consolas,monospace;border:1px solid var(--line);border-radius:8px;padding:10px;resize:none}
+  .note{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px}
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none;z-index:999}
+  #toast.on{opacity:1}
+</style>
+</head>
+<body>
+
+<header id="bar">
+  <div id="brand">NESCAF<span>É</span> Page Request</div>
+  <input id="url" type="url" placeholder="Paste the page URL, e.g. https://www.nescafe.com/gb/coffees/original" autocomplete="off">
+  <button class="btn dark" id="btnLoad">Load</button>
+  <select id="viewport" title="Viewport">
+    <option value="100%">Desktop</option>
+    <option value="820px">Tablet</option>
+    <option value="390px">Mobile</option>
+  </select>
+  <label class="toggle" title="Edit mode: click an element to request a change. Off: browse the site.">
+    <input type="checkbox" id="editMode" checked><span class="sw"></span>Edit mode
+  </label>
+  <button class="btn dark" id="btnSide">Changes<span id="cnt">0</span></button>
+  <button class="btn dark" id="btnSettings" title="Settings">⚙</button>
+  <button class="btn primary" id="btnPrepare">Prepare request</button>
+</header>
+
+<div id="main">
+  <div id="stage">
+    <div id="frameWrap" class="hidden"><iframe id="page" title="Page preview"></iframe></div>
+    <div id="empty"><div class="box" id="emptyBox">
+      <h2>Request a page update in 3 steps</h2>
+      <ol>
+        <li>Paste the URL of the NESCAFÉ page and click <b>Load</b>.</li>
+        <li>With <b>Edit mode</b> on, click any text, image or button and choose: <b>Replace text</b>, <b>Replace image</b> or <b>Add comment</b>. Changed elements get a <b style="color:#16a34a">green frame</b>.</li>
+        <li>Fill in the request details on the right and click <b>Prepare request</b> — you get an annotated screenshot and a ready-to-paste description.</li>
+      </ol>
+      <div class="muted small">Tip: switch Edit mode off to click through links and open another page.</div>
+    </div></div>
+  </div>
+
+  <aside id="side">
+    <h3>Request details</h3>
+    <div class="row">
+      <div class="field"><label>Market <span class="req">*</span></label>
+        <input id="mMarket" list="markets" placeholder="e.g. GB">
+        <datalist id="markets">
+          <option>AT</option><option>BE</option><option>BG</option><option>CH</option><option>CZ</option><option>DE</option>
+          <option>DK</option><option>ES</option><option>FI</option><option>FR</option><option>GB</option><option>GR</option>
+          <option>HR</option><option>HU</option><option>IE</option><option>IT</option><option>NL</option><option>NO</option>
+          <option>PL</option><option>PT</option><option>RO</option><option>RS</option><option>SE</option><option>SK</option><option>UA</option>
+        </datalist>
+      </div>
+      <div class="field"><label>Urgency</label>
+        <select id="mUrgency"><option>Normal</option><option>High</option><option>Low</option></select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Page type</label>
+        <select id="mType">
+          <option>Product (PDP)</option><option>Recipe</option><option>Article</option><option>Campaign / Landing</option>
+          <option>Range / Listing</option><option>Homepage</option><option>Other</option>
+        </select>
+      </div>
+      <div class="field"><label>Expected deadline</label><input id="mDeadline" type="date"></div>
+    </div>
+    <div class="field"><label>Requested by</label><input id="mName" placeholder="Name / e-mail"></div>
+    <div class="field"><label>General comment</label><textarea id="mComment" rows="2" placeholder="Optional"></textarea></div>
+    <hr>
+    <h3>Changes</h3>
+    <div id="list"></div>
+  </aside>
+</div>
+
+<!-- Element editor -->
+<dialog id="dlgEdit">
+  <div class="dlg-head">
+    <div><div class="muted small" id="edCtx"></div><h3 id="edTitle">Element</h3></div>
+    <div style="display:flex;gap:6px">
+      <button type="button" class="btn ghost sm" id="edParent" title="Select the surrounding (parent) element">↑ Parent element</button>
+      <button type="button" class="btn ghost sm" id="edClose">✕</button>
+    </div>
+  </div>
+  <div class="dlg-body">
+    <div class="preview" id="edPreview"></div>
+
+    <label class="opt" id="optTextWrap"><input type="checkbox" id="optText"> Replace text</label>
+    <div class="opt-body" id="bodyText">
+      <textarea id="edText" rows="5"></textarea>
+      <div class="muted small" id="edTextInfo"></div>
+    </div>
+
+    <div id="imgSection">
+      <label class="opt"><input type="checkbox" id="optImg"> Replace image</label>
+      <div class="opt-body" id="bodyImg">
+        <div class="seg">
+          <label><input type="radio" name="imgSrc" value="file" checked> Upload file</label>
+          <label><input type="radio" name="imgSrc" value="url"> Image URL</label>
+          <label><input type="radio" name="imgSrc" value="chid"> Content Hub ID</label>
+        </div>
+        <input type="file" id="edFile" accept="image/*">
+        <input type="url" id="edImgUrl" placeholder="https://…">
+        <input type="text" id="edChId" placeholder="e.g. 12345">
+        <img id="edImgPreview" alt="">
+      </div>
+    </div>
+
+    <label class="opt"><input type="checkbox" id="optComment"> Add comment</label>
+    <div class="opt-body" id="bodyComment">
+      <textarea id="edComment" rows="3" placeholder="Instruction for the web editor, e.g. “Remove this product from the listing”"></textarea>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <button type="button" class="btn ghost danger" id="edRemove">Remove change</button>
+    <span class="grow"></span>
+    <button type="button" class="btn ghost" id="edCancel">Cancel</button>
+    <button type="button" class="btn primary" id="edSave">Save change</button>
+  </div>
+</dialog>
+
+<!-- Request output -->
+<dialog id="dlgRequest">
+  <div class="dlg-head"><h3>Your request is ready</h3><button type="button" class="btn ghost sm" id="rqClose">✕</button></div>
+  <div class="dlg-body" id="rqBody"></div>
+  <div class="dlg-foot">
+    <button type="button" class="btn ghost" id="rqCopyImg">Copy screenshot</button>
+    <button type="button" class="btn ghost" id="rqCopyText">Copy description</button>
+    <button type="button" class="btn ghost" id="rqPng">Download PNG</button>
+    <span class="grow"></span>
+    <a class="btn ghost" id="rqSp" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;text-decoration:none">Open Market requests ↗</a>
+    <button type="button" class="btn primary" id="rqZip">Download ZIP (all files)</button>
+  </div>
+</dialog>
+
+<!-- Settings -->
+<dialog id="dlgSettings" style="width:520px">
+  <div class="dlg-head"><h3>Settings</h3><button type="button" class="btn ghost sm" id="stClose">✕</button></div>
+  <div class="dlg-body">
+    <div class="field"><label>Proxy URL (Cloudflare Worker)</label><input id="stProxy" placeholder="https://nescafe-request-proxy.<account>.workers.dev"></div>
+    <p class="muted small">Required to open NESCAFÉ pages inside the editor and to include images in the screenshot. See README.</p>
+    <label class="opt"><input type="checkbox" id="stScripts"> Run page scripts (only if some content does not appear)</label>
+  </div>
+  <div class="dlg-foot"><span class="grow"></span><button type="button" class="btn primary" id="stSave">Save</button></div>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   CONFIG — edit before publishing
+   ===================================================================== */
+const CONFIG = {
+  PROXY_URL: 'https://nescafe-request-proxy.boj4rsky.workers.dev',  // e.g. 'https://nescafe-request-proxy.<account>.workers.dev'
+  SHAREPOINT_URL: 'https://nestle.sharepoint.com/teams/NescafeEMENAsites/Lists/Market%20requests/AllItems.aspx',
+  MAX_CANVAS_HEIGHT: 16000   // browsers fail on very tall canvases; long pages are scaled down
+};
+
+/* ===================================================================== */
+const $ = s => document.querySelector(s);
+const settings = {
+  proxy: localStorage.getItem('nrq.proxy') ?? CONFIG.PROXY_URL,
+  scripts: localStorage.getItem('nrq.scripts') === '1'
+};
+const state = { url:'', title:'', doc:null, win:null, layer:null, changes:[], editMode:true,
+                hover:null, current:null, token:0, result:null };
+
+const iframe = $('#page');
+
+/* ---------- helpers ---------- */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const trunc = (s, n) => { s = String(s || '').replace(/\s+/g,' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+const slug = s => String(s || '').toLowerCase().replace(/https?:\/\//,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60) || 'page';
+function toast(msg, ms = 2600){ const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), ms); }
+function download(blob, name){ const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+const proxyBase = () => settings.proxy ? settings.proxy.replace(/\/+$/,'') + '/' : '';
+const readFile = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+
+/* =====================================================================
+   1. Load page
+   ===================================================================== */
+async function fetchHtml(url){
+  const attempts = [];
+  if (settings.proxy) attempts.push(proxyBase() + '?url=' + encodeURIComponent(url));
+  attempts.push(url); // works only if the site allows CORS
+  let lastErr;
+  for (const u of attempts){
+    try{
+      const r = await fetch(u, { credentials:'omit' });
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + r.statusText);
+      const html = await r.text();
+      if (!/<(html|head|body)[\s>]/i.test(html)) throw new Error('The response is not an HTML page');
+      return { html, finalUrl: r.headers.get('X-Final-URL') || url };
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr;
+}
+
+function prepareHtml(html, baseUrl, token){
+  const d = new DOMParser().parseFromString(html, 'text/html');
+  d.querySelectorAll('base').forEach(b => b.remove());
+  const base = d.createElement('base'); base.href = baseUrl; d.head.prepend(base);
+  const mark = d.createElement('meta'); mark.name = 'nrq-token'; mark.content = token; d.head.prepend(mark);
+  d.querySelectorAll('meta[http-equiv]').forEach(m => { if (/content-security-policy|refresh/i.test(m.httpEquiv)) m.remove(); });
+
+  if (!settings.scripts){
+    d.querySelectorAll('script').forEach(s => { if (s.type !== 'application/ld+json') s.remove(); });
+    d.querySelectorAll('*').forEach(el => { for (const a of [...el.attributes]) if (/^on/i.test(a.name)) el.removeAttribute(a.name); });
+  }
+  // Lazy-loaded images (normally swapped in by JS)
+  d.querySelectorAll('img,source,iframe').forEach(el => {
+    const map = el.tagName === 'SOURCE'
+      ? [['data-srcset','srcset']]
+      : [['data-src','src'],['data-lazy-src','src'],['data-original','src'],['data-srcset','srcset'],['data-lazy-srcset','srcset']];
+    for (const [from, to] of map){ const v = el.getAttribute(from); if (v) el.setAttribute(to, v); }
+    if (el.getAttribute('loading') === 'lazy') el.setAttribute('loading', 'eager');
+  });
+  d.querySelectorAll('[data-bg],[data-background-image]').forEach(el => {
+    const v = el.getAttribute('data-bg') || el.getAttribute('data-background-image');
+    if (v) el.style.backgroundImage = `url("${v}")`;
+  });
+
+  const st = d.createElement('style'); st.id = 'nrq-style';
+  st.textContent = `
+    .nrq-hover{outline:2px dashed #2563eb !important;outline-offset:-2px !important;cursor:pointer !important}
+    .nrq-changed{outline:3px solid #16a34a !important;outline-offset:2px !important}
+    .nrq-selected{outline:3px solid #f59e0b !important;outline-offset:2px !important}
+    #nrq-layer{position:absolute;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none}
+    .nrq-badge{position:absolute;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:#16a34a;color:#fff;
+      font:700 12px/22px Arial,sans-serif;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.45);transform:translate(-40%,-55%)}
+    html.nrq-capturing #nrq-layer{display:none !important}
+    html.nrq-capturing .nrq-changed,html.nrq-capturing .nrq-hover,html.nrq-capturing .nrq-selected{outline:none !important}
+    ${settings.scripts ? '' : '[data-aos]{opacity:1 !important;transform:none !important}.lazyload,.lazyloading{opacity:1 !important}'}
+  `;
+  d.head.appendChild(st);
+  return '<!DOCTYPE html>\n' + d.documentElement.outerHTML;
+}
+
+async function loadUrl(raw){
+  let url = (raw || '').trim();
+  if (!url) return toast('Paste a page URL first');
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  try { new URL(url); } catch { return toast('This does not look like a valid URL'); }
+
+  if (state.changes.length && !confirm('Loading another page will discard the current changes. Continue?')) return;
+  state.changes = []; renderList();
+  showMessage('<div class="spinner"></div><div style="text-align:center">Loading page…</div>');
+
+  try{
+    const { html, finalUrl } = await fetchHtml(url);
+    state.url = finalUrl; $('#url').value = finalUrl;
+    history.replaceState(null, '', '?url=' + encodeURIComponent(finalUrl));
+    const token = String(++state.token);
+    iframe.srcdoc = prepareHtml(html, finalUrl, token);
+    await waitForFrame(token);
+    attachFrame();
+    $('#empty').style.display = 'none';
+    $('#frameWrap').classList.remove('hidden');
+  }catch(e){
+    console.error(e);
+    showMessage(`<h2>The page could not be loaded</h2>
+      <div class="err">${esc(e.message || e)}</div>
+      <p>${settings.proxy
+        ? 'Check that the URL is correct and publicly available, and that the proxy allows this domain.'
+        : 'No proxy is configured. Browsers block reading other websites directly — open <b>⚙ Settings</b> and add the proxy URL (see README).'}</p>`);
+  }
+}
+
+function showMessage(html){
+  $('#frameWrap').classList.add('hidden');
+  $('#empty').style.display = 'flex';
+  $('#emptyBox').innerHTML = html;
+}
+
+function waitForFrame(token){
+  return new Promise((res, rej) => {
+    const t0 = Date.now();
+    (function poll(){
+      try{
+        const d = iframe.contentDocument;
+        const ok = d && d.body && d.readyState !== 'loading' &&
+                   d.querySelector('meta[name="nrq-token"]')?.content === token;
+        if (ok) return res();
+      }catch(e){ return rej(e); }
+      if (Date.now() - t0 > 20000) return rej(new Error('Timed out while rendering the page'));
+      setTimeout(poll, 100);
+    })();
+  });
+}
+
+/* =====================================================================
+   2. Interaction inside the page
+   ===================================================================== */
+function attachFrame(){
+  const doc = iframe.contentDocument, win = iframe.contentWindow;
+  state.doc = doc; state.win = win; state.title = doc.title || '';
+  const layer = doc.createElement('div'); layer.id = 'nrq-layer'; doc.body.appendChild(layer); state.layer = layer;
+
+  doc.addEventListener('mouseover', e => {
+    if (!state.editMode) return;
+    const t = pick(e.target); setHover(t);
+  }, true);
+  doc.documentElement.addEventListener('mouseleave', () => setHover(null));
+
+  doc.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (state.editMode){
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      const t = pick(e.target); if (t) openEditor(t);
+      return;
+    }
+    if (!a) return;
+    e.preventDefault();
+    const href = a.href;
+    if (!href || /^(javascript|mailto|tel):/i.test(href)) return;
+    const u = new URL(href);
+    if (u.hash && u.href.split('#')[0] === state.url.split('#')[0]){
+      doc.getElementById(decodeURIComponent(u.hash.slice(1)))?.scrollIntoView({ behavior:'smooth' });
+      return;
+    }
+    $('#url').value = href; loadUrl(href);
+  }, true);
+  doc.addEventListener('submit', e => e.preventDefault(), true);
+  win.addEventListener('resize', updateBadges);
+  win.addEventListener('load', updateBadges);
+}
+
+function pick(t){
+  const doc = state.doc;
+  if (!t || t.nodeType !== 1) return null;
+  if (t.closest('#nrq-layer')) return null;
+  const svg = t.closest('svg');
+  if (svg) t = svg.parentElement?.closest('a,button') || svg;
+  if (t.tagName === 'SOURCE') t = t.parentElement?.querySelector('img') || t;
+  if (t === doc.body || t === doc.documentElement) return null;
+  return t;
+}
+
+function setHover(el){
+  if (state.hover && state.hover !== el) state.hover.classList.remove('nrq-hover');
+  state.hover = el;
+  if (el) el.classList.add('nrq-hover');
+}
+
+/* ---------- element description ---------- */
+const LABELS = { H1:'Heading H1',H2:'Heading H2',H3:'Heading H3',H4:'Heading H4',H5:'Heading H5',H6:'Heading H6',
+  P:'Paragraph',A:'Link',BUTTON:'Button',IMG:'Image',PICTURE:'Image',LI:'List item',UL:'List',OL:'List',SPAN:'Text',
+  STRONG:'Text',EM:'Text',SECTION:'Section',ARTICLE:'Block',DIV:'Block',FIGURE:'Figure',FIGCAPTION:'Caption',
+  VIDEO:'Video',IFRAME:'Embedded content',LABEL:'Label',svg:'Icon',SVG:'Icon',TD:'Table cell',TH:'Table header',BLOCKQUOTE:'Quote' };
+
+function describe(el){
+  let l = LABELS[el.tagName] || el.tagName.toLowerCase();
+  if (el.tagName === 'A' && (/btn|button|cta/i.test(el.className) || el.getAttribute('role') === 'button')) l = 'Button (link)';
+  return l;
+}
+function sectionContext(el){
+  let p = el.parentElement, depth = 0;
+  while (p && p !== state.doc.body && depth < 8){
+    const h = [...p.querySelectorAll('h1,h2,h3')].find(h => h !== el && !el.contains(h) && !h.contains(el) && h.innerText.trim());
+    if (h) return trunc(h.innerText, 60);
+    p = p.parentElement; depth++;
+  }
+  return '';
+}
+function cssPath(el){
+  const parts = [];
+  while (el && el.nodeType === 1 && el !== state.doc.body && parts.length < 8){
+    let p = el.tagName.toLowerCase();
+    if (el.id && !/\d{4,}/.test(el.id)){ parts.unshift(p + '#' + CSS.escape(el.id)); break; }
+    const sib = el.parentElement ? [...el.parentElement.children].filter(c => c.tagName === el.tagName) : [];
+    if (sib.length > 1) p += `:nth-of-type(${sib.indexOf(el) + 1})`;
+    parts.unshift(p); el = el.parentElement;
+  }
+  return parts.join(' > ');
+}
+function imageInfo(el){
+  if (el.tagName === 'IMG') return { kind:'img', target:el, src: el.currentSrc || el.src };
+  const bg = state.win.getComputedStyle(el).backgroundImage;
+  const m = bg && bg !== 'none' && bg.match(/url\(["']?(.*?)["']?\)/);
+  if (m) return { kind:'bg', target:el, src:m[1] };
+  const imgs = el.querySelectorAll('img');
+  if (imgs.length === 1) return { kind:'img', target:imgs[0], src: imgs[0].currentSrc || imgs[0].src };
+  return null;
+}
+function textNodes(el){
+  const w = state.doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: n =>
+    n.nodeValue.trim() && !['SCRIPT','STYLE','NOSCRIPT'].includes(n.parentElement?.tagName) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const out = []; let n; while ((n = w.nextNode())) out.push(n); return out;
+}
+
+/* ---------- apply / revert visual preview ---------- */
+function snapshot(ch){
+  ch.snap = { texts: textNodes(ch.el).map(n => [n, n.nodeValue]), html: ch.el.innerHTML };
+  const info = ch.img;
+  if (info){
+    const t = info.target;
+    ch.snap.img = { src:t.getAttribute('src'), srcset:t.getAttribute('srcset'), sizes:t.getAttribute('sizes'), bg:t.style.backgroundImage,
+      sources: t.parentElement?.tagName === 'PICTURE' ? [...t.parentElement.querySelectorAll('source')].map(s => [s, s.getAttribute('srcset')]) : [] };
+  }
+}
+function revert(ch){
+  const a = ch.applied || {};
+  if (a.image && ch.snap.img){
+    const t = ch.img.target, s = ch.snap.img;
+    if (ch.img.kind === 'img'){
+      s.src != null ? t.setAttribute('src', s.src) : t.removeAttribute('src');
+      s.srcset != null ? t.setAttribute('srcset', s.srcset) : t.removeAttribute('srcset');
+      s.sizes != null ? t.setAttribute('sizes', s.sizes) : t.removeAttribute('sizes');
+      s.sources.forEach(([n, v]) => v != null ? n.setAttribute('srcset', v) : n.removeAttribute('srcset'));
+    } else t.style.backgroundImage = s.bg;
+  }
+  if (a.text){
+    if (ch.snap.texts.length) ch.snap.texts.forEach(([n, v]) => n.nodeValue = v);
+    else ch.el.innerHTML = ch.snap.html;
+  }
+  ch.applied = {};
+}
+function apply(ch){
+  revert(ch);
+  if (ch.newText != null){
+    const nodes = ch.snap.texts.map(x => x[0]);
+    if (nodes.length){ nodes[0].nodeValue = ch.newText; nodes.slice(1).forEach(n => n.nodeValue = ''); }
+    else ch.el.textContent = ch.newText;
+    ch.applied.text = true;
+  }
+  const ni = ch.newImage;
+  if (ni && ni.preview && ch.img){
+    const t = ch.img.target;
+    if (ch.img.kind === 'img'){
+      t.setAttribute('src', ni.preview); t.removeAttribute('srcset'); t.removeAttribute('sizes');
+      ch.snap.img.sources.forEach(([n]) => n.removeAttribute('srcset'));
+    } else t.style.setProperty('background-image', `url("${ni.preview}")`, 'important');
+    ch.applied.image = true;
+  }
+  ch.el.classList.add('nrq-changed');
+}
+
+/* =====================================================================
+   3. Element editor dialog
+   ===================================================================== */
+let pendingImage = null;
+const changeFor = el => state.changes.find(c => c.el === el);
+
+function openEditor(el){
+  setHover(null);
+  if (state.current) state.current.classList.remove('nrq-selected');
+  state.current = el; el.classList.add('nrq-selected');
+  const ch = changeFor(el);
+  const img = ch ? ch.img : imageInfo(el);
+  const text = ch ? ch.originalText : el.innerText.trim();
+  pendingImage = null;
+
+  $('#edTitle').textContent = describe(el) + (ch ? `  •  change #${state.changes.indexOf(ch) + 1}` : '');
+  const ctx = sectionContext(el);
+  $('#edCtx').textContent = ctx ? 'Section: ' + ctx : '';
+  $('#edPreview').innerHTML = (img ? `<img src="${esc(img.src)}" alt="">` : '') + (text ? esc(trunc(text, 400)) : (img ? '' : '<span class="muted">No text in this element</span>'));
+  $('#edParent').disabled = !el.parentElement || el.parentElement === state.doc.body;
+
+  // text
+  $('#optTextWrap').style.display = text || ch?.newText != null ? '' : 'none';
+  $('#optText').checked = ch?.newText != null;
+  $('#edText').value = ch?.newText ?? text;
+  $('#edTextInfo').textContent = text ? `Current text: ${text.length} characters` : '';
+  // image
+  $('#imgSection').style.display = img ? '' : 'none';
+  $('#optImg').checked = !!ch?.newImage;
+  const src = ch?.newImage?.source || 'file';
+  document.querySelector(`input[name=imgSrc][value=${src}]`).checked = true;
+  $('#edFile').value = '';
+  $('#edImgUrl').value = ch?.newImage?.source === 'url' ? ch.newImage.value : '';
+  $('#edChId').value = ch?.newImage?.source === 'chid' ? ch.newImage.value : '';
+  setImgPreview(ch?.newImage?.preview || '');
+  // comment
+  $('#optComment').checked = !!ch?.comment;
+  $('#edComment').value = ch?.comment || '';
+
+  $('#edRemove').style.display = ch ? '' : 'none';
+  syncEditorUi();
+  $('#dlgEdit').showModal();
+  setTimeout(() => ($('#optText').checked ? $('#edText') : null)?.focus(), 50);
+}
+
+function syncEditorUi(){
+  $('#bodyText').classList.toggle('on', $('#optText').checked);
+  $('#bodyImg').classList.toggle('on', $('#optImg').checked);
+  $('#bodyComment').classList.toggle('on', $('#optComment').checked);
+  const src = document.querySelector('input[name=imgSrc]:checked').value;
+  $('#edFile').style.display = src === 'file' ? '' : 'none';
+  $('#edImgUrl').style.display = src === 'url' ? '' : 'none';
+  $('#edChId').style.display = src === 'chid' ? '' : 'none';
+}
+function setImgPreview(src){ const p = $('#edImgPreview'); p.src = src || ''; p.style.display = src ? 'block' : 'none'; }
+
+function closeEditor(){
+  $('#dlgEdit').close();
+  if (state.current) state.current.classList.remove('nrq-selected');
+  state.current = null;
+}
+
+function saveEditor(){
+  const el = state.current; if (!el) return;
+  const existing = changeFor(el);
+  const wantText = $('#optText').checked, wantImg = $('#optImg').checked, wantComment = $('#optComment').checked;
+  const comment = $('#edComment').value.trim();
+
+  let newImage = null;
+  if (wantImg){
+    const src = document.querySelector('input[name=imgSrc]:checked').value;
+    if (src === 'file'){
+      newImage = pendingImage || (existing?.newImage?.source === 'file' ? existing.newImage : null);
+      if (!newImage) return toast('Choose an image file');
+    } else if (src === 'url'){
+      const v = $('#edImgUrl').value.trim(); if (!v) return toast('Enter the image URL');
+      newImage = { source:'url', value:v, preview:v };
+    } else {
+      const v = $('#edChId').value.trim(); if (!v) return toast('Enter the Content Hub ID');
+      newImage = { source:'chid', value:v, preview:'' };
+    }
+  }
+  const newText = wantText ? $('#edText').value : null;
+  if (!wantText && !newImage && !(wantComment && comment)) return toast('Choose at least one action');
+
+  const ch = existing || { el, img: imageInfo(el), originalText: el.innerText.trim(), label: describe(el),
+                           context: sectionContext(el), selector: cssPath(el), applied:{} };
+  if (!existing){ snapshot(ch); state.changes.push(ch); }
+  ch.newText = newText; ch.newImage = newImage; ch.comment = wantComment ? comment : '';
+  apply(ch);
+  closeEditor(); renderList();
+  toast('Change saved');
+}
+
+function removeChange(ch){
+  revert(ch);
+  ch.el.classList.remove('nrq-changed');
+  state.changes = state.changes.filter(c => c !== ch);
+  renderList();
+}
+
+/* =====================================================================
+   4. Side panel + badges
+   ===================================================================== */
+function renderList(){
+  $('#cnt').textContent = state.changes.length;
+  const list = $('#list'); list.innerHTML = '';
+  if (!state.changes.length){
+    list.innerHTML = '<div class="muted small">No changes yet. Turn on Edit mode and click any element on the page.</div>';
+  }
+  state.changes.forEach((ch, i) => {
+    const d = document.createElement('div'); d.className = 'card';
+    const summary = ch.newText != null ? '→ ' + ch.newText : ch.comment || ch.originalText || ch.img?.src || '';
+    d.innerHTML = `<div class="card-h"><span class="num">${i + 1}</span><b>${esc(ch.label)}</b></div>
+      ${ch.context ? `<div class="small muted">Section: ${esc(ch.context)}</div>` : ''}
+      <div class="small">${esc(trunc(summary, 90))}</div>
+      <div class="tags">${ch.newText != null ? '<span class="tag">Text</span>' : ''}${ch.newImage ? '<span class="tag">Image</span>' : ''}${ch.comment ? '<span class="tag">Comment</span>' : ''}</div>
+      <div class="card-a"><button data-a="go">Show</button><button data-a="edit">Edit</button><button data-a="del">Delete</button></div>`;
+    d.addEventListener('click', e => {
+      const a = e.target.dataset.a; if (!a) return;
+      if (a === 'go'){ ch.el.scrollIntoView({ block:'center', behavior:'smooth' }); }
+      if (a === 'edit'){ ch.el.scrollIntoView({ block:'center' }); openEditor(ch.el); }
+      if (a === 'del' && confirm(`Delete change #${i + 1}?`)) removeChange(ch);
+    });
+    list.appendChild(d);
+  });
+  updateBadges();
+}
+
+function updateBadges(){
+  const layer = state.layer, win = state.win; if (!layer || !win) return;
+  layer.innerHTML = '';
+  state.changes.forEach((ch, i) => {
+    const r = ch.el.getBoundingClientRect(); if (!r.width && !r.height) return;
+    const b = state.doc.createElement('div'); b.className = 'nrq-badge'; b.textContent = i + 1;
+    b.style.left = (r.left + win.scrollX) + 'px'; b.style.top = (r.top + win.scrollY) + 'px';
+    layer.appendChild(b);
+  });
+}
+setInterval(() => { if (state.changes.length) updateBadges(); }, 1000);
+
+/* =====================================================================
+   5. Prepare request: screenshot + description
+   ===================================================================== */
+function meta(){
+  return { market: $('#mMarket').value.trim(), urgency: $('#mUrgency').value, pageType: $('#mType').value,
+           deadline: $('#mDeadline').value, requestedBy: $('#mName').value.trim(), comment: $('#mComment').value.trim() };
+}
+const assetName = (ch, i) => `${String(i + 1).padStart(2, '0')}_${(ch.newImage.name || 'image').replace(/[^\w.\-]+/g, '_')}`;
+
+async function capture(){
+  const doc = state.doc, win = state.win, root = doc.documentElement;
+  setHover(null);
+  const sx = win.scrollX, sy = win.scrollY;
+  root.classList.add('nrq-capturing');
+  win.scrollTo(0, 0);
+  await new Promise(r => setTimeout(r, 200));
+  try{
+    const W = root.clientWidth;
+    const H = Math.max(root.scrollHeight, doc.body.scrollHeight);
+    const scale = Math.min(1, CONFIG.MAX_CANVAS_HEIGHT / H);
+    const rects = state.changes.map(ch => { const r = ch.el.getBoundingClientRect();
+      return { x:r.left + win.scrollX, y:r.top + win.scrollY, w:r.width, h:r.height }; });
+    const opts = { scale, backgroundColor:'#ffffff', logging:false, useCORS:false, imageTimeout:15000,
+                   width:W, height:H, windowWidth:W, windowHeight:win.innerHeight, x:0, y:0, scrollX:0, scrollY:0 };
+    if (settings.proxy) opts.proxy = proxyBase();
+    const shot = await html2canvas(root, opts);
+    return { shot, rects, scale };
+  } finally {
+    root.classList.remove('nrq-capturing');
+    win.scrollTo(sx, sy);
+  }
+}
+
+function compose({ shot, rects, scale }, m){
+  const HEAD = 64, c = document.createElement('canvas');
+  c.width = shot.width; c.height = shot.height + HEAD;
+  const g = c.getContext('2d');
+  g.fillStyle = '#1a1a1a'; g.fillRect(0, 0, c.width, HEAD);
+  g.fillStyle = '#e2001a'; g.fillRect(0, HEAD - 4, c.width, 4);
+  g.fillStyle = '#fff'; g.font = 'bold 18px Arial'; g.textBaseline = 'top';
+  g.fillText(`NESCAFÉ content update request  •  Market: ${m.market || '—'}  •  ${state.changes.length} change(s)  •  ${new Date().toLocaleDateString('en-GB')}`, 16, 10);
+  g.font = '14px Arial'; g.fillStyle = '#d1d5db'; g.fillText(state.url, 16, 36);
+  g.drawImage(shot, 0, HEAD);
+
+  rects.forEach((r, i) => {
+    state.changes[i].visible = r.w > 0 && r.h > 0;
+    if (!state.changes[i].visible) return;
+    const x = r.x * scale, y = r.y * scale + HEAD, w = r.w * scale, h = r.h * scale;
+    g.lineWidth = 4; g.strokeStyle = '#16a34a'; g.strokeRect(x - 3, y - 3, w + 6, h + 6);
+    const label = String(i + 1); g.font = 'bold 14px Arial';
+    const bw = Math.max(26, g.measureText(label).width + 14), bx = Math.max(2, x - 12), by = Math.max(HEAD + 2, y - 14);
+    g.fillStyle = '#16a34a'; g.beginPath(); g.roundRect ? g.roundRect(bx, by, bw, 26, 13) : g.rect(bx, by, bw, 26); g.fill();
+    g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.textAlign = 'center'; g.fillText(label, bx + bw / 2, by + 13);
+    g.textAlign = 'left'; g.textBaseline = 'top';
+  });
+  return c;
+}
+
+function buildText(m){
+  const L = [], ind = (s, p = '     ') => String(s).split('\n').map(x => p + x).join('\n');
+  L.push('NESCAFÉ WEBSITE — CONTENT UPDATE REQUEST', '');
+  L.push(`Market:            ${m.market || '—'}`);
+  L.push(`Page URL:          ${state.url}`);
+  if (state.title) L.push(`Page title:        ${state.title}`);
+  L.push(`Page type:         ${m.pageType}`);
+  L.push(`Urgency:           ${m.urgency}`);
+  L.push(`Expected deadline: ${m.deadline || '—'}`);
+  L.push(`Requested by:      ${m.requestedBy || '—'}`);
+  L.push(`Created:           ${new Date().toLocaleString('en-GB')}`);
+  if (m.comment) L.push('', 'General comment:', ind(m.comment, '  '));
+  L.push('', `CHANGES (${state.changes.length}) — numbers match the green frames on the screenshot`, '');
+  state.changes.forEach((ch, i) => {
+    L.push(`#${i + 1}. ${ch.label}${ch.context ? ` — section “${ch.context}”` : ''}`);
+    L.push(`   Element: ${ch.selector}`);
+    if (ch.newText != null){
+      L.push('   ▸ REPLACE TEXT');
+      L.push('     Current:'); L.push(ind(ch.originalText || '(empty)', '       '));
+      L.push('     New:');     L.push(ind(ch.newText || '(empty — remove text)', '       '));
+    }
+    if (ch.newImage){
+      const ni = ch.newImage;
+      L.push('   ▸ REPLACE IMAGE');
+      L.push(`     Current: ${ch.img?.src || '—'}`);
+      L.push(`     New:     ${ni.source === 'file' ? 'attached file ' + assetName(ch, i)
+                             : ni.source === 'url' ? ni.value : 'Content Hub ID ' + ni.value}`);
+    }
+    if (ch.comment){ L.push('   ▸ COMMENT'); L.push(ind(ch.comment)); }
+    if (ch.visible === false) L.push('   (element is hidden on the page, e.g. in a menu or tab — not framed on the screenshot)');
+    L.push('');
+  });
+  return L.join('\n');
+}
+
+async function prepareRequest(){
+  if (!state.doc) return toast('Load a page first');
+  const m = meta();
+  if (!m.market){ $('#side').classList.remove('hidden'); $('#mMarket').focus(); return toast('Please fill in the Market'); }
+  if (!state.changes.length && !confirm('No changes are marked on the page. Prepare the request anyway?')) return;
+  if (state.current) closeEditor();
+
+  const body = $('#rqBody');
+  body.innerHTML = '<div style="padding:40px"><div class="spinner"></div><div style="text-align:center">Creating the screenshot…</div></div>';
+  $('#dlgRequest').showModal();
+  try{
+    const cap = await capture();
+    const canvas = compose(cap, m);
+    const text = buildText(m);
+    const png = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    state.result = { png, text, meta:m };
+    body.innerHTML = `
+      ${settings.proxy ? '' : '<div class="note">No proxy configured — page images may be missing on the screenshot.</div>'}
+      <div class="note">Next step: open <b>Market requests</b> in SharePoint → <b>Add new item</b> → paste the description and attach the ZIP (or the PNG + new images).</div>
+      <div class="req-grid">
+        <div class="shot"><img src="${URL.createObjectURL(png)}" alt="Annotated screenshot"></div>
+        <textarea id="reqText" spellcheck="false"></textarea>
+      </div>`;
+    $('#reqText').value = text;
+  }catch(e){
+    console.error(e);
+    body.innerHTML = `<div class="err" style="color:#991b1b">Screenshot failed: ${esc(e.message || e)}</div>`;
+  }
+}
+
+async function downloadZip(){
+  const r = state.result; if (!r) return;
+  const zip = new JSZip();
+  const text = $('#reqText')?.value || r.text;
+  zip.file('request.txt', text);
+  zip.file('screenshot.png', r.png);
+  const changes = [];
+  for (const [i, ch] of state.changes.entries()){
+    const item = { number:i + 1, element:ch.label, section:ch.context, selector:ch.selector,
+                   replaceText: ch.newText != null ? { current:ch.originalText, new:ch.newText } : null,
+                   replaceImage: null, comment: ch.comment || null };
+    if (ch.newImage){
+      const ni = ch.newImage;
+      item.replaceImage = { current: ch.img?.src || null, source: ni.source,
+        value: ni.source === 'file' ? 'assets/' + assetName(ch, i) : ni.value };
+      if (ni.source === 'file') zip.file('assets/' + assetName(ch, i), ni.preview.split(',')[1], { base64:true });
+    }
+    changes.push(item);
+  }
+  zip.file('request.json', JSON.stringify({ ...r.meta, url:state.url, title:state.title, created:new Date().toISOString(), changes }, null, 2));
+  const blob = await zip.generateAsync({ type:'blob' });
+  download(blob, `NESCAFE_${r.meta.market || 'XX'}_${slug(new URL(state.url).pathname)}_${new Date().toISOString().slice(0,10)}.zip`);
+}
+
+/* =====================================================================
+   6. Wiring
+   ===================================================================== */
+$('#btnLoad').onclick = () => loadUrl($('#url').value);
+$('#url').addEventListener('keydown', e => { if (e.key === 'Enter') loadUrl($('#url').value); });
+$('#viewport').onchange = e => { $('#frameWrap').style.width = e.target.value; setTimeout(updateBadges, 300); };
+$('#editMode').onchange = e => { state.editMode = e.target.checked; if (!state.editMode) setHover(null); toast(state.editMode ? 'Edit mode: click an element to request a change' : 'Browse mode: links work, nothing is edited'); };
+$('#btnSide').onclick = () => $('#side').classList.toggle('hidden');
+$('#btnPrepare').onclick = prepareRequest;
+
+['optText','optImg','optComment'].forEach(id => $('#' + id).onchange = syncEditorUi);
+document.querySelectorAll('input[name=imgSrc]').forEach(r => r.onchange = () => { syncEditorUi(); setImgPreview(''); pendingImage = null; });
+$('#edFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const data = await readFile(f);
+  pendingImage = { source:'file', name:f.name, value:f.name, preview:data };
+  setImgPreview(data);
+};
+$('#edImgUrl').onchange = e => setImgPreview(e.target.value.trim());
+$('#edSave').onclick = saveEditor;
+$('#edCancel').onclick = $('#edClose').onclick = closeEditor;
+$('#dlgEdit').addEventListener('cancel', e => { e.preventDefault(); closeEditor(); });
+$('#dlgEdit').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) saveEditor(); });
+$('#edRemove').onclick = () => { const ch = changeFor(state.current); if (ch){ closeEditor(); removeChange(ch); toast('Change removed'); } };
+$('#edParent').onclick = () => { const p = state.current?.parentElement; if (p && p !== state.doc.body){ closeEditor(); openEditor(p); } };
+
+$('#rqClose').onclick = () => $('#dlgRequest').close();
+$('#rqSp').href = CONFIG.SHAREPOINT_URL;
+$('#rqCopyText').onclick = async () => { await navigator.clipboard.writeText($('#reqText')?.value || state.result?.text || ''); toast('Description copied'); };
+$('#rqCopyImg').onclick = async () => {
+  try{ await navigator.clipboard.write([new ClipboardItem({ 'image/png': state.result.png })]); toast('Screenshot copied — paste it into Teams or e-mail'); }
+  catch{ toast('Your browser cannot copy images — use Download PNG'); }
+};
+$('#rqPng').onclick = () => state.result && download(state.result.png, `NESCAFE_${state.result.meta.market}_${slug(new URL(state.url).pathname)}.png`);
+$('#rqZip').onclick = downloadZip;
+
+$('#btnSettings').onclick = () => { $('#stProxy').value = settings.proxy; $('#stScripts').checked = settings.scripts; $('#dlgSettings').showModal(); };
+$('#stClose').onclick = () => $('#dlgSettings').close();
+$('#stSave').onclick = () => {
+  settings.proxy = $('#stProxy').value.trim(); settings.scripts = $('#stScripts').checked;
+  localStorage.setItem('nrq.proxy', settings.proxy); localStorage.setItem('nrq.scripts', settings.scripts ? '1' : '0');
+  $('#dlgSettings').close(); toast('Settings saved');
+  if (state.url && confirm('Reload the page with the new settings? Current changes will be discarded.')){ state.changes = []; loadUrl(state.url); }
+};
+
+['mMarket','mName'].forEach(id => { const v = localStorage.getItem('nrq.' + id); if (v) $('#' + id).value = v;
+  $('#' + id).addEventListener('change', e => localStorage.setItem('nrq.' + id, e.target.value)); });
+
+window.addEventListener('beforeunload', e => { if (state.changes.length){ e.preventDefault(); e.returnValue = ''; } });
+
+renderList();
+const startUrl = new URLSearchParams(location.search).get('url');
+if (startUrl){ $('#url').value = startUrl; loadUrl(startUrl); }
+</script>
+</body>
+</html>
